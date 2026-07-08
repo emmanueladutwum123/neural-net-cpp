@@ -1,4 +1,4 @@
-#include "mnist_loader.hpp"
+#include "nn/mnist_loader.hpp"
 #include <fstream>
 #include <stdexcept>
 

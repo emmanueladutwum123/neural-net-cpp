@@ -1,15 +1,21 @@
 #pragma once
 #include "matrix.hpp"
+#include <algorithm>
 #include <cmath>
 
 namespace nn {
 
+// Caches its own input in forward() (mirroring Linear::last_input) so backward()
+// doesn't depend on the caller correctly re-supplying the pre-activation values.
 struct ReLU {
+    Matrix last_input;
+
     Matrix forward(const Matrix& x) {
+        last_input = x;
         return x.apply([](float v) { return v > 0.0f ? v : 0.0f; });
     }
-    Matrix backward(const Matrix& grad, const Matrix& x) {
-        return grad.hadamard(x.apply([](float v) { return v > 0.0f ? 1.0f : 0.0f; }));
+    Matrix backward(const Matrix& grad) {
+        return grad.hadamard(last_input.apply([](float v) { return v > 0.0f ? 1.0f : 0.0f; }));
     }
 };
 
