@@ -37,3 +37,24 @@ jobs:
 
       - name: Benchmark smoke test
         run: build/benchmark
+
+      - name: Download MNIST
+        run: bash scripts/download_mnist.sh
+
+      # This is the check that would have caught the real bug this project shipped
+      # with for months: MLP::backward() called relu.backward(grad, {}) with an
+      # empty placeholder matrix instead of the real cached input, which segfaulted
+      # on the very first training step in Release builds. The unit tests above all
+      # passed the whole time because none of them drove the actual training path —
+      # only this does. Two epochs is enough to both crash (if it's going to) and
+      # cross a real accuracy floor (if it's actually learning), in well under a
+      # minute, so this runs on every push instead of only the full 20-epoch job.
+      - name: Train smoke test (2 epochs on real MNIST)
+        run: |
+          build/train data/mnist 2 | tee /tmp/train_log.txt
+          test_acc=$(grep -oE 'test_acc=[0-9.]+' /tmp/train_log.txt | tail -1 | cut -d= -f2)
+          echo "Final test accuracy after 2 epochs: ${test_acc}%"
+          awk -v acc="$test_acc" 'BEGIN { exit !(acc > 90) }' || {
+            echo "::error::Test accuracy ${test_acc}% did not clear the 90% floor after 2 epochs"
+            exit 1
+          }
