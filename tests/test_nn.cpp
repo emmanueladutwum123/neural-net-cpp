@@ -4,6 +4,7 @@
 #include "nn/activations.hpp"
 #include "nn/loss.hpp"
 #include "nn/optimizer.hpp"
+#include "nn/mlp.hpp"
 
 using namespace nn;
 
@@ -41,6 +42,19 @@ TEST(ActivationTest, ReLUForward) {
     EXPECT_NEAR(out.data[1], 0.0f, 1e-6f);
     EXPECT_NEAR(out.data[2], 0.0f, 1e-6f);
     EXPECT_NEAR(out.data[3], 3.0f, 1e-6f);
+}
+
+TEST(ActivationTest, ReLUBackwardMasksNonPositiveInputs) {
+    Matrix x(1, 4);
+    x.data = {-2.0f, -0.5f, 0.0f, 3.0f};
+    ReLU relu;
+    relu.forward(x); // caches x as last_input, same as Linear caches last_input
+    Matrix grad(1, 4, 1.0f);
+    auto dx = relu.backward(grad);
+    EXPECT_NEAR(dx.data[0], 0.0f, 1e-6f); // negative input -> gradient blocked
+    EXPECT_NEAR(dx.data[1], 0.0f, 1e-6f);
+    EXPECT_NEAR(dx.data[2], 0.0f, 1e-6f); // x == 0 -> blocked (matches forward's v>0 rule)
+    EXPECT_NEAR(dx.data[3], 1.0f, 1e-6f); // positive input -> gradient passes through
 }
 
 TEST(ActivationTest, SigmoidRange) {
@@ -129,6 +143,42 @@ TEST(DropoutTest, PassThroughInference) {
     for (auto& v : x.data) v = 1.0f;
     auto out = drop.forward(x);
     for (auto v : out.data) EXPECT_NEAR(v, 1.0f, 1e-6f);
+}
+
+// Regression test for a real bug: MLP::backward() used to call
+// relu.backward(grad, {}) with an empty placeholder Matrix instead of the real
+// cached pre-activation input. Matrix::hadamard() asserts matching shapes, but
+// this project builds in Release (NDEBUG defined, assert() compiled out), so
+// instead of failing loudly it read out of bounds of an empty vector and
+// segfaulted on the very first training step. Every other test in this file
+// exercises one component in isolation and would pass either way — this is the
+// only test that drives the full forward+backward+optimizer-step path the bug
+// actually lived in.
+TEST(MLPTest, EndToEndTrainingReducesLoss) {
+    MLP model;
+    Adam optimizer(0.01f);
+    auto params = model.params();
+    optimizer.init(params);
+    CrossEntropyLoss criterion;
+
+    Matrix x = Matrix::randn(16, 784);
+    std::vector<int> labels = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5};
+
+    float first_loss = -1.0f, last_loss = -1.0f;
+    for (int step = 0; step < 30; ++step) {
+        auto logits = model.forward(x, true);
+        float loss = criterion.forward(logits, labels);
+        auto grad = criterion.backward(labels);
+
+        model.zero_grad();
+        model.backward(grad);
+        optimizer.step(params);
+
+        if (step == 0) first_loss = loss;
+        last_loss = loss;
+    }
+
+    EXPECT_LT(last_loss, first_loss);
 }
 
 int main(int argc, char** argv) {
