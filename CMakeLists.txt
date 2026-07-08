@@ -5,9 +5,12 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type")
 
-# -O3 + vectorization
+# -O3 without -march=native (which ties the binary to the exact CPU that built it —
+# a portability problem for anyone else building this from source) or -ffast-math
+# (relaxes IEEE 754 compliance in ways that can silently interact badly with the
+# epsilon-based numerical stability tricks used in Adam/BatchNorm/softmax).
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(-O3 -march=native -ffast-math -Wall -Wextra)
+    add_compile_options(-O3 -Wall -Wextra)
 endif()
 
 include_directories(include)

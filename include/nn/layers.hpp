@@ -114,13 +114,17 @@ public:
     float p;
     Matrix mask;
     bool training;
+    std::mt19937 rng;
 
-    Dropout(float p = 0.5f) : p(p), training(true) {}
+    // Seeded once at construction (not per forward() call) so the generator isn't
+    // discarded and reseeded on every minibatch, and so a run can be made
+    // reproducible by passing an explicit seed.
+    Dropout(float p = 0.5f, unsigned seed = std::random_device{}())
+        : p(p), training(true), rng(seed) {}
 
     Matrix forward(const Matrix& x) {
         if (!training || p == 0.0f) return x;
         mask = Matrix(x.rows, x.cols);
-        std::mt19937 rng(std::random_device{}());
         std::bernoulli_distribution dist(1.0f - p);
         float scale = 1.0f / (1.0f - p);
         for (int i = 0; i < (int)mask.data.size(); ++i)

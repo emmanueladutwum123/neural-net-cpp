@@ -1,6 +1,7 @@
 #pragma once
 #include "matrix.hpp"
 #include "activations.hpp"
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
